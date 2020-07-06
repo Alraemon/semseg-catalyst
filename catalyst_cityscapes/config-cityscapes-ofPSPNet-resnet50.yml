@@ -1,0 +1,150 @@
+shared:
+  ignore_index: &ignore_index 255
+
+model_params:
+  model: &model ofPSPNet
+  # layers: 50
+  # zoom_factor: 8
+  encoder_name: &encoder_name 'resnet50' # pretrained model should be downloaded under ./initmodel/resnet50_v2.pth
+  # encoder_depth: 5
+  # upsampling: 8
+  classes: &classes 19
+  # pretrained: True
+  # num_classes: 1
+
+runner_params:
+  input_key: image
+  input_target_key: mask
+  output_key: [pred_final, pred_auxiliary]
+  # output_key: pred_final
+
+args:
+  expdir: '/mnt/users/git/semseg/catalyst_train_pipeline'
+  logdir: &logdir '/mnt/users/train_record'
+  baselogdir: '/mnt/users/train_record'
+  seed: &seed 42
+  verbose: true
+
+monitoring_params:
+  project: "cityscapes"
+  # tags: [*model, *encoder_name]
+
+distributed_params:  # OPTIONAL KEYWORD, params for distributed training and NVIDIA Apex
+ rank: -1  # Rank for distributed training
+ opt_level: O2  # Example for NVIDIA Apex
+ syncbn: True  # KEYWORD, whether to convert BatchNorm to SyncBatchNorm (Default is False)
+#  # This level may contain other parameters for the initialization of NVIDIA Apex
+
+stages:
+  data_params:
+    batch_size: 10 ## fp16, bs=3->6.3G gpu memory usage
+    num_workers: 10
+    per_gpu_scaling: false
+    data_root: '/mnt/data/cityscapes'
+    train_set: '/mnt/data/cityscapes/fine_train.txt'
+    valid_set: '/mnt/data/cityscapes/fine_val.txt'
+    label_mapping: None
+    classes: *classes
+    # loaders_params:  # KEYWORD, parameters for loaders, optional
+    #   # Example
+    #   valid:  # Overrides the value for valid loader
+    #     batch_size: 4
+
+  state_params:
+    main_metric: LCEend
+    minimize_metric: True
+
+  criterion_params:
+    _key_value: True
+    # dice:
+    #   criterion: DiceLoss
+    # iou:
+    #   criterion: IoULoss
+    bce:
+      criterion: CrossEntropyLoss #CrossEntropyLoss
+      # input_key: mask
+      # output_key: pred_final
+      ignore_index: *ignore_index
+
+  optimizer_params:
+    optimizer: SGD
+    lr: 0.01
+    layerwise_params:
+      "layer*":
+        lr: 0.001
+        weight_decay: 0.00003
+    weight_decay: 0.0001
+    no_bias_weight_decay: True
+
+# 第一阶段只训练解码部分，也就需要冰封编码部分呢； 第二阶段在微调整个网络。
+  stage1:
+    state_params:
+      num_epochs: &num_epochs1 200
+
+    scheduler_params:
+      scheduler: OneCycleLRWithWarmup
+      num_steps: *num_epochs1
+      warmup_steps: 3
+      init_lr: 0.001
+      lr_range: [0.01, 0.0001]
+      momentum_range: [0.85, 0.95]
+      # for efficientnet: 
+      # RMSProp optimizer with decay 0.9 and momentum 0.9; 
+      # batch norm momentum 0.99; 
+      # weight decay 1e-5; 
+      # initial learning rate 0.256 that decays by 0.97 every 2.4 epochs
+    # scheduler_params:
+    #   scheduler: MultiStepLR
+    #   milestones: [10]
+    #   gamma: 0.3
+
+    callbacks_params:
+
+      LCE_end:
+        callback: CriterionCallback
+        input_key: mask
+        output_key: pred_final
+        prefix: LCEend
+        criterion_key: bce
+
+      # Liou:
+      #   callback: CriterionCallback
+      #   input_key: mask
+      #   output_key: pred_final
+      #   prefix: Liou
+      #   criterion_key: iou
+        # ignore_index: *ignore_index
+      LCE_aux:
+        callback: CriterionCallback
+        input_key: mask
+        output_key: pred_auxiliary
+        prefix: LCEaux
+        criterion_key: bce
+      #   # ignore_index: *ignore_index
+      loss_aggregator:
+        callback: MetricAggregationCallback
+        prefix: loss
+        mode: weighted_sum
+        metrics: {"LCEaux": 0.4, "LCEend": 1}
+
+      iou:
+        callback: IouCallbackSafe
+        input_key: mask
+        output_key: pred_final
+        prefix: iou
+        classes: *classes
+        ignore_index: *ignore_index
+        is_per_class: True
+
+      # iou_o:
+      #   callback: IouCallbackSafe
+      #   input_key: mask
+      #   output_key: pred_final
+      #   prefix: iou_o
+      #   activation: "Softmax2d"
+      #   classes: *classes
+      #   ignore_index: *ignore_index
+      #   is_per_class: False
+
+      saver:
+        callback: CheckpointCallback

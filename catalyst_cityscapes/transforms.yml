@@ -1,0 +1,60 @@
+shared:
+  image_size: &image_size 713
+  resize_size: &resize_size 2048 # int(image_size * 1.5)
+
+stages:
+  transform_params:
+    _key_value: True
+    train:
+      # _key_value: True
+      transform: A.Compose
+      transforms:
+        # - transform: A.LongestMaxSize # also `albu.SmallestMaxSize` is allowed
+        #   max_size: *resize_size
+        #   p: 1.0
+        - transform: A.ShiftScaleRotate
+          shift_limit: 0.01
+          scale_limit: [-0.5, 1]
+          rotate_limit: 10
+          border_mode: 0
+          value: [123.675, 116.28, 103.53]
+          mask_value: 255
+        - transform: A.SmallestMaxSize # also `albu.SmallestMaxSize` is allowed
+          max_size: *image_size
+          p: 1.0
+        - transform: A.Blur
+          blur_limit: 5
+        - transform: A.HorizontalFlip
+        - transform: A.RandomCrop
+          height: *image_size
+          width: *image_size
+          p: 1.0
+        # - transform: A.Flip # 90度翻转
+        #   p: 0.75
+        # - transform: A.RandomRotate90
+        # - transform: A.Cutout # 制造小方块缺失，实现对抗
+  #       - transform: A.RandomBrightnessContrast
+  #         brightness_limit: 0.2
+  #         contrast_limit: 0.2
+  #         p: 0.3
+  #       # - transform: A.GridDistortion
+  #       #   p: 0.3
+  # #        - transform: A.HueSaturationValue
+  # #          p: 0.3
+  #       - transform: A.MotionBlur # 运动伪影
+        - transform: A.Normalize
+          # max_pixel_value: 1
+        - transform: A.ToTensorV2
+    valid:
+      # _key_value: True
+      transform: A.Compose
+      transforms:
+        - transform: A.LongestMaxSize # also `albu.SmallestMaxSize` is allowed
+          max_size: *resize_size
+          p: 1.0
+        - transform: A.CenterCrop
+          height: *image_size
+          width: *image_size
+          p: 1.0
+        - transform: A.Normalize
+        - transform: A.ToTensorV2
