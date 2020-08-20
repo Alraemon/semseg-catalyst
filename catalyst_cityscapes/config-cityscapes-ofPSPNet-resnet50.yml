@@ -40,9 +40,9 @@ stages:
     batch_size: 10 ## fp16, bs=3->6.3G gpu memory usage
     num_workers: 10
     per_gpu_scaling: false
-    data_root: '/mnt/data/cityscapes'
-    train_set: '/mnt/data/cityscapes/fine_train.txt'
-    valid_set: '/mnt/data/cityscapes/fine_val.txt'
+    data_root: '/workspace/data/'
+    train_set: '/workspace/data/train.lst'
+    valid_set: '/workspace/data/val.lst'
     label_mapping: None
     classes: *classes
     # loaders_params:  # KEYWORD, parameters for loaders, optional
